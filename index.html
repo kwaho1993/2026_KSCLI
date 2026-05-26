@@ -266,8 +266,7 @@ function buildToc(metadata) {
             btn.className = 'toc-item';
             btn.textContent = parseName(item.url);
             btn.addEventListener('click', () => {
-                const idx = pdfFirstPage[i];
-                if (idx != null) pages[idx].wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                navigateTo(i);
                 closeDrawer();
             });
             tocList.appendChild(btn);
@@ -282,6 +281,24 @@ tocBackdrop.addEventListener('click', closeDrawer);
 
 function openDrawer()  { tocDrawer.classList.add('open');    tocBackdrop.classList.add('open'); }
 function closeDrawer() { tocDrawer.classList.remove('open'); tocBackdrop.classList.remove('open'); }
+
+function navigateTo(pdfIndex) {
+    for (const p of renderQueue) p.state = 'idle';
+    renderQueue.length = 0;
+
+    const idx = pdfFirstPage[pdfIndex];
+    if (idx == null) return;
+
+    // target 5페이지 전으로 instant 점프 후 주변 페이지 미리 로드
+    const nearIdx = Math.max(0, idx - 5);
+    pages[nearIdx].wrap.scrollIntoView({ behavior: 'instant', block: 'start' });
+    updateVisibility();
+
+    // 새 프레임에서 smooth 이동 시작 (instant 반영 후)
+    requestAnimationFrame(() => {
+        pages[idx].wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+}
 
 // ── Rendering ────────────────────────────────────────────────────────────────
 
