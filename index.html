@@ -147,6 +147,20 @@
             background: rgba(255,255,255,0.1);
             color: white;
         }
+
+        .toc-download {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 13px 16px;
+            color: #e8e8e8;
+            background: rgba(255,255,255,0.06);
+            border-bottom: 1px solid #333;
+            text-decoration: none;
+            font-size: 14px;
+            transition: background 0.12s;
+        }
+        .toc-download:active { background: rgba(255,255,255,0.12); }
     </style>
 </head>
 <body>
@@ -162,6 +176,13 @@
 <div id="toc-backdrop"></div>
 <div id="toc-drawer">
     <div class="toc-header">목차</div>
+    <a class="toc-download" href="book/journal.pdf" download="2026_KSCLI_학술지.pdf">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 1v9M8 10l-3-3M8 10l3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        전체 PDF 다운로드
+    </a>
     <div id="toc-list"></div>
 </div>
 
