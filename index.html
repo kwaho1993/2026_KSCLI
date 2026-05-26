@@ -2,40 +2,260 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>PDF.js 뷰어</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 면역학회</title>
     <style>
-        body { background-color: #525659; margin: 0; display: flex; justify-content: center; }
-        canvas { border: 1px solid black; margin-top: 20px; direction: ltr; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: #525659;
+            font-family: sans-serif;
+        }
+
+        #loading {
+            position: fixed;
+            inset: 0;
+            background: #525659;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            z-index: 100;
+            gap: 12px;
+            font-size: 14px;
+        }
+
+        #loading-bar-wrap {
+            width: 220px;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        #loading-bar {
+            height: 100%;
+            width: 0%;
+            background: white;
+            border-radius: 2px;
+            transition: width 0.2s;
+        }
+
+        #viewer {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 24px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .page-wrap {
+            position: relative;
+            width: 100%;
+            height: 0;
+            background: #d0d0d0;
+            overflow: hidden;
+        }
+
+        .page-wrap canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 </head>
 <body>
-    <canvas id="pdf-render"></canvas>
 
-    <script>
-        const url = './sample.pdf'; // 공유할 PDF 경로
-        
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+<div id="loading">
+    <span>페이지를 불러오는 중...</span>
+    <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+    <span id="loading-count"></span>
+</div>
 
-        const loadingTask = pdfjsLib.getDocument(url);
-        loadingTask.promise.then(pdf => {
-            // 첫 번째 페이지 로드
-            pdf.getPage(1).then(page => {
-                const scale = 1.5;
-                const viewport = page.getViewport({ scale: scale });
+<div id="viewer"></div>
 
-                const canvas = document.getElementById('pdf-render');
-                const context = canvas.getContext('2d');
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-                const renderContext = {
-                    canvasContext: context,
-                    viewport: viewport
-                };
-                page.render(renderContext);
+const PDF_FILES = [
+    'book/ad/광고01_태진엠디.pdf',
+    'book/ad/광고02_ROCHE_1.pdf',
+    'book/ad/광고03_ROCHE_2.pdf',
+    'book/ad/광고04_BECKMAN COULTER.pdf',
+    'book/ad/광고05_다우바이오메디카.pdf',
+    'book/ad/광고06_PROTIA.pdf',
+    'book/ad/광고07_ABBOTT.pdf',
+    'book/ad/광고08_INVITROS.pdf',
+    'book/ad/광고09_WERFEN.pdf',
+    'book/ad/광고10_한독.pdf',
+    'book/ad/광고11_아산제약.pdf',
+    'book/ad/광고12_MINDRAY.pdf',
+    'book/ad/광고13_SYSMEX.pdf',
+    'book/papers/연자01_김혜진_KODA_LAB_과_이식검사.pdf',
+    'book/papers/연자02_박정용_CLSI 프로그램 소개.pdf',
+    'book/papers/연자03_안시현_차세대 알레르기 성분항원진단 ALEX 검사 소개.pdf',
+    'book/papers/연자04_이광호_AI 사용법에 대한 이해.pdf',
+    'book/papers/연자05_서정민_현장검사(POCT)에서의Immunoassay.pdf',
+];
+
+const RENDER_MARGIN = 800;   // 뷰포트 밖 이 거리까지 미리 렌더
+const UNLOAD_MARGIN = 3000;  // 이 거리 초과 시 캔버스 해제
+const MAX_CONCURRENT = 3;    // 동시 렌더링 최대 수
+
+const viewer = document.getElementById('viewer');
+const loadingEl = document.getElementById('loading');
+const loadingBar = document.getElementById('loading-bar');
+const loadingCount = document.getElementById('loading-count');
+
+const pages = [];
+let activeRenders = 0;
+const renderQueue = [];
+
+async function init() {
+    const pdfDocs = await Promise.all(
+        PDF_FILES.map(url =>
+            pdfjsLib.getDocument(url).promise.catch(err => {
+                console.error('Load failed:', url, err);
+                return null;
+            })
+        )
+    );
+
+    const total = pdfDocs.reduce((s, d) => s + (d ? d.numPages : 0), 0);
+    let done = 0;
+
+    for (let i = 0; i < pdfDocs.length; i++) {
+        const pdfDoc = pdfDocs[i];
+        if (!pdfDoc) continue;
+
+        const ratios = await Promise.all(
+            Array.from({ length: pdfDoc.numPages }, async (_, j) => {
+                const page = await pdfDoc.getPage(j + 1);
+                const vp = page.getViewport({ scale: 1 });
+                page.cleanup();
+
+                done++;
+                loadingBar.style.width = `${(done / total * 100).toFixed(0)}%`;
+                loadingCount.textContent = `${done} / ${total}`;
+
+                return vp.height / vp.width;
+            })
+        );
+
+        for (let n = 0; n < pdfDoc.numPages; n++) {
+            const wrap = document.createElement('div');
+            wrap.className = 'page-wrap';
+            wrap.style.paddingBottom = `${(ratios[n] * 100).toFixed(4)}%`;
+            viewer.appendChild(wrap);
+            pages.push({
+                wrap,
+                pdfDoc,
+                pageNum: n + 1,
+                aspectRatio: ratios[n],
+                state: 'idle',  // 'idle' | 'queued' | 'rendering' | 'rendered'
+                canvas: null,
             });
-        });
-    </script>
+        }
+    }
+
+    loadingEl.style.display = 'none';
+    updateVisibility();
+    window.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('resize', onResize, { passive: true });
+}
+
+let rafId = null;
+function scheduleUpdate() {
+    if (!rafId) rafId = requestAnimationFrame(() => { rafId = null; updateVisibility(); });
+}
+
+function updateVisibility() {
+    const vTop = window.scrollY;
+    const vBot = vTop + window.innerHeight;
+
+    for (const p of pages) {
+        const rect = p.wrap.getBoundingClientRect();
+        const top = rect.top + window.scrollY;
+        const bot = rect.bottom + window.scrollY;
+
+        const inRender = bot >= vTop - RENDER_MARGIN && top <= vBot + RENDER_MARGIN;
+        const inKeep   = bot >= vTop - UNLOAD_MARGIN  && top <= vBot + UNLOAD_MARGIN;
+
+        if (inRender && p.state === 'idle') {
+            enqueue(p);
+        } else if (!inKeep && p.state === 'rendered') {
+            unload(p);
+        }
+    }
+}
+
+function enqueue(p) {
+    p.state = 'queued';
+    renderQueue.push(p);
+    drain();
+}
+
+function drain() {
+    while (activeRenders < MAX_CONCURRENT && renderQueue.length > 0) {
+        const p = renderQueue.shift();
+        if (p.state !== 'queued') continue;
+        activeRenders++;
+        renderPage(p).finally(() => { activeRenders--; drain(); });
+    }
+}
+
+async function renderPage(p) {
+    p.state = 'rendering';
+    try {
+        const dpr = window.devicePixelRatio || 1;
+        const cssWidth = viewer.clientWidth;
+        const page = await p.pdfDoc.getPage(p.pageNum);
+        const vp0 = page.getViewport({ scale: 1 });
+        const vp = page.getViewport({ scale: cssWidth * dpr / vp0.width });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(vp.width);
+        canvas.height = Math.round(vp.height);
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+        page.cleanup();
+
+        if (p.state !== 'rendering') return; // 렌더 중 unload된 경우
+
+        p.wrap.appendChild(canvas);
+        p.canvas = canvas;
+        p.state = 'rendered';
+    } catch (err) {
+        console.error('Render error:', err);
+        p.state = 'idle';
+    }
+}
+
+function unload(p) {
+    if (p.state === 'queued') {
+        const idx = renderQueue.indexOf(p);
+        if (idx !== -1) renderQueue.splice(idx, 1);
+    }
+    if (p.canvas) { p.canvas.remove(); p.canvas = null; }
+    p.state = 'idle';
+}
+
+let resizeTimer;
+function onResize() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+        for (const p of pages) if (p.state !== 'idle') unload(p);
+        updateVisibility();
+    }, 150);
+}
+
+init();
+</script>
 </body>
 </html>
