@@ -9,9 +9,10 @@
 
         body {
             background: #525659;
-            font-family: sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
 
+        /* ── Loading ── */
         #loading {
             position: fixed;
             inset: 0;
@@ -21,19 +22,17 @@
             align-items: center;
             justify-content: center;
             color: white;
-            z-index: 100;
+            z-index: 200;
             gap: 12px;
             font-size: 14px;
         }
-
         #loading-bar-wrap {
             width: 220px;
             height: 3px;
-            background: rgba(255, 255, 255, 0.25);
+            background: rgba(255,255,255,0.25);
             border-radius: 2px;
             overflow: hidden;
         }
-
         #loading-bar {
             height: 100%;
             width: 0%;
@@ -42,6 +41,7 @@
             transition: width 0.2s;
         }
 
+        /* ── Viewer ── */
         #viewer {
             max-width: 900px;
             margin: 0 auto;
@@ -50,7 +50,6 @@
             flex-direction: column;
             gap: 2px;
         }
-
         .page-wrap {
             position: relative;
             width: 100%;
@@ -58,14 +57,95 @@
             background: #d0d0d0;
             overflow: hidden;
         }
-
         .page-wrap canvas {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             display: block;
+        }
+
+        /* ── TOC 버튼 (우하단 FAB) ── */
+        #toc-btn {
+            position: fixed;
+            bottom: 24px;
+            right: 20px;
+            z-index: 150;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: rgba(30,30,32,0.88);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.45);
+            transition: background 0.15s;
+        }
+        #toc-btn:active { background: rgba(50,50,53,0.95); }
+
+        /* ── 백드롭 ── */
+        #toc-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 160;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s;
+        }
+        #toc-backdrop.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* ── 드로어 ── */
+        #toc-drawer {
+            position: fixed;
+            top: 0; left: 0; bottom: 0;
+            width: min(280px, 80vw);
+            background: #1c1c1e;
+            color: #e8e8e8;
+            z-index: 170;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            transform: translateX(-100%);
+            transition: transform 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #toc-drawer.open { transform: translateX(0); }
+
+        .toc-header {
+            padding: 20px 16px 14px;
+            font-size: 16px;
+            font-weight: 700;
+            border-bottom: 1px solid #333;
+        }
+        .toc-section-label {
+            padding: 14px 16px 4px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            color: #666;
+            text-transform: uppercase;
+        }
+        .toc-item {
+            display: block;
+            width: 100%;
+            padding: 10px 16px 10px 20px;
+            font-size: 13px;
+            line-height: 1.45;
+            color: #bbb;
+            background: none;
+            border: none;
+            text-align: left;
+            cursor: pointer;
+            transition: background 0.12s, color 0.12s;
+        }
+        .toc-item:active {
+            background: rgba(255,255,255,0.1);
+            color: white;
         }
     </style>
 </head>
@@ -79,97 +159,143 @@
 
 <div id="viewer"></div>
 
+<div id="toc-backdrop"></div>
+<div id="toc-drawer">
+    <div class="toc-header">목차</div>
+    <div id="toc-list"></div>
+</div>
+
+<button id="toc-btn" aria-label="목차 열기">
+    <svg width="20" height="16" viewBox="0 0 20 16" fill="none">
+        <rect y="0"    width="20" height="2.5" rx="1.25" fill="white"/>
+        <rect y="6.75" width="20" height="2.5" rx="1.25" fill="white"/>
+        <rect y="13.5" width="20" height="2.5" rx="1.25" fill="white"/>
+    </svg>
+</button>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc =
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-const PDF_FILES = [
-    'book/ad/광고01_태진엠디.pdf',
-    'book/ad/광고02_ROCHE_1.pdf',
-    'book/ad/광고03_ROCHE_2.pdf',
-    'book/ad/광고04_BECKMAN COULTER.pdf',
-    'book/ad/광고05_다우바이오메디카.pdf',
-    'book/ad/광고06_PROTIA.pdf',
-    'book/ad/광고07_ABBOTT.pdf',
-    'book/ad/광고08_INVITROS.pdf',
-    'book/ad/광고09_WERFEN.pdf',
-    'book/ad/광고10_한독.pdf',
-    'book/ad/광고11_아산제약.pdf',
-    'book/ad/광고12_MINDRAY.pdf',
-    'book/ad/광고13_SYSMEX.pdf',
-    'book/papers/연자01_김혜진_KODA_LAB_과_이식검사.pdf',
-    'book/papers/연자02_박정용_CLSI 프로그램 소개.pdf',
-    'book/papers/연자03_안시현_차세대 알레르기 성분항원진단 ALEX 검사 소개.pdf',
-    'book/papers/연자04_이광호_AI 사용법에 대한 이해.pdf',
-    'book/papers/연자05_서정민_현장검사(POCT)에서의Immunoassay.pdf',
-];
+const RENDER_MARGIN = 800;
+const UNLOAD_MARGIN = 3000;
+const MAX_CONCURRENT = 3;
 
-const RENDER_MARGIN = 800;   // 뷰포트 밖 이 거리까지 미리 렌더
-const UNLOAD_MARGIN = 3000;  // 이 거리 초과 시 캔버스 해제
-const MAX_CONCURRENT = 3;    // 동시 렌더링 최대 수
-
-const viewer = document.getElementById('viewer');
-const loadingEl = document.getElementById('loading');
-const loadingBar = document.getElementById('loading-bar');
+const viewer       = document.getElementById('viewer');
+const loadingEl    = document.getElementById('loading');
+const loadingBar   = document.getElementById('loading-bar');
 const loadingCount = document.getElementById('loading-count');
+const tocList      = document.getElementById('toc-list');
+const tocDrawer    = document.getElementById('toc-drawer');
+const tocBackdrop  = document.getElementById('toc-backdrop');
+const tocBtn       = document.getElementById('toc-btn');
 
-const pages = [];
+const pages        = [];
+const pdfFirstPage = []; // pages[] 인덱스: 각 PDF의 첫 페이지
+const pdfCache     = new Map(); // url → Promise<PDFDocumentProxy>
+
 let activeRenders = 0;
 const renderQueue = [];
 
-async function init() {
-    const pdfDocs = await Promise.all(
-        PDF_FILES.map(url =>
-            pdfjsLib.getDocument(url).promise.catch(err => {
-                console.error('Load failed:', url, err);
-                return null;
-            })
-        )
-    );
+// PDF 문서를 처음 필요할 때만 로드, 이후 캐시 재사용
+function getPdfDoc(url) {
+    if (!pdfCache.has(url)) {
+        pdfCache.set(url, pdfjsLib.getDocument(url).promise);
+    }
+    return pdfCache.get(url);
+}
 
-    const total = pdfDocs.reduce((s, d) => s + (d ? d.numPages : 0), 0);
+function parseName(url) {
+    return url.split('/').pop().replace('.pdf', '')
+        .replace(/^(광고|연자)\d+_/, '')
+        .replace(/_/g, ' ');
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+async function init() {
+    let metadata;
+    try {
+        metadata = await fetch('book/metadata.json').then(r => {
+            if (!r.ok) throw new Error(r.status);
+            return r.json();
+        });
+    } catch {
+        loadingEl.innerHTML = '<span style="color:#f88">book/metadata.json 을 찾을 수 없습니다.<br>generate_metadata.py 를 먼저 실행하세요.</span>';
+        return;
+    }
+
+    const total = metadata.reduce((s, m) => s + m.ratios.length, 0);
     let done = 0;
 
-    for (let i = 0; i < pdfDocs.length; i++) {
-        const pdfDoc = pdfDocs[i];
-        if (!pdfDoc) continue;
+    for (const item of metadata) {
+        pdfFirstPage.push(pages.length);
 
-        const ratios = await Promise.all(
-            Array.from({ length: pdfDoc.numPages }, async (_, j) => {
-                const page = await pdfDoc.getPage(j + 1);
-                const vp = page.getViewport({ scale: 1 });
-                page.cleanup();
-
-                done++;
-                loadingBar.style.width = `${(done / total * 100).toFixed(0)}%`;
-                loadingCount.textContent = `${done} / ${total}`;
-
-                return vp.height / vp.width;
-            })
-        );
-
-        for (let n = 0; n < pdfDoc.numPages; n++) {
+        for (const ratio of item.ratios) {
             const wrap = document.createElement('div');
             wrap.className = 'page-wrap';
-            wrap.style.paddingBottom = `${(ratios[n] * 100).toFixed(4)}%`;
+            wrap.style.paddingBottom = `${(ratio * 100).toFixed(4)}%`;
             viewer.appendChild(wrap);
+
             pages.push({
                 wrap,
-                pdfDoc,
-                pageNum: n + 1,
-                aspectRatio: ratios[n],
-                state: 'idle',  // 'idle' | 'queued' | 'rendering' | 'rendered'
+                url: item.url,
+                pageNum: pages.length - pdfFirstPage[pdfFirstPage.length - 1] + 1,
+                aspectRatio: ratio,
+                state: 'idle',
                 canvas: null,
             });
+
+            done++;
+            loadingBar.style.width = `${(done / total * 100).toFixed(0)}%`;
+            loadingCount.textContent = `${done} / ${total}`;
         }
     }
 
+    buildToc(metadata);
     loadingEl.style.display = 'none';
     updateVisibility();
     window.addEventListener('scroll', scheduleUpdate, { passive: true });
     window.addEventListener('resize', onResize, { passive: true });
 }
+
+// ── TOC ──────────────────────────────────────────────────────────────────────
+
+function buildToc(metadata) {
+    [
+        { label: '광고', test: url => url.includes('/ad/') },
+        { label: '연자', test: url => url.includes('/papers/') },
+    ].forEach(({ label, test }) => {
+        const labelEl = document.createElement('div');
+        labelEl.className = 'toc-section-label';
+        labelEl.textContent = label;
+        tocList.appendChild(labelEl);
+
+        metadata.forEach((item, i) => {
+            if (!test(item.url)) return;
+            const btn = document.createElement('button');
+            btn.className = 'toc-item';
+            btn.textContent = parseName(item.url);
+            btn.addEventListener('click', () => {
+                const idx = pdfFirstPage[i];
+                if (idx != null) pages[idx].wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                closeDrawer();
+            });
+            tocList.appendChild(btn);
+        });
+    });
+}
+
+tocBtn.addEventListener('click', () =>
+    tocDrawer.classList.contains('open') ? closeDrawer() : openDrawer()
+);
+tocBackdrop.addEventListener('click', closeDrawer);
+
+function openDrawer()  { tocDrawer.classList.add('open');    tocBackdrop.classList.add('open'); }
+function closeDrawer() { tocDrawer.classList.remove('open'); tocBackdrop.classList.remove('open'); }
+
+// ── Rendering ────────────────────────────────────────────────────────────────
 
 let rafId = null;
 function scheduleUpdate() {
@@ -182,8 +308,8 @@ function updateVisibility() {
 
     for (const p of pages) {
         const rect = p.wrap.getBoundingClientRect();
-        const top = rect.top + window.scrollY;
-        const bot = rect.bottom + window.scrollY;
+        const top  = rect.top  + window.scrollY;
+        const bot  = rect.bottom + window.scrollY;
 
         const inRender = bot >= vTop - RENDER_MARGIN && top <= vBot + RENDER_MARGIN;
         const inKeep   = bot >= vTop - UNLOAD_MARGIN  && top <= vBot + UNLOAD_MARGIN;
@@ -214,23 +340,23 @@ function drain() {
 async function renderPage(p) {
     p.state = 'rendering';
     try {
-        const dpr = window.devicePixelRatio || 1;
+        const dpr      = window.devicePixelRatio || 1;
         const cssWidth = viewer.clientWidth;
-        const page = await p.pdfDoc.getPage(p.pageNum);
-        const vp0 = page.getViewport({ scale: 1 });
-        const vp = page.getViewport({ scale: cssWidth * dpr / vp0.width });
+        const pdfDoc   = await getPdfDoc(p.url);
+        const page     = await pdfDoc.getPage(p.pageNum);
+        const vp0      = page.getViewport({ scale: 1 });
+        const vp       = page.getViewport({ scale: cssWidth * dpr / vp0.width });
 
         const canvas = document.createElement('canvas');
-        canvas.width = Math.round(vp.width);
+        canvas.width  = Math.round(vp.width);
         canvas.height = Math.round(vp.height);
         await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
         page.cleanup();
 
-        if (p.state !== 'rendering') return; // 렌더 중 unload된 경우
-
+        if (p.state !== 'rendering') return;
         p.wrap.appendChild(canvas);
         p.canvas = canvas;
-        p.state = 'rendered';
+        p.state  = 'rendered';
     } catch (err) {
         console.error('Render error:', err);
         p.state = 'idle';
