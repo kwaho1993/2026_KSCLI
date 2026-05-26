@@ -3,27 +3,39 @@
 GitHub Pages QR 코드 → qr.png 저장
 
 실행: python generate_metadata.py
-의존성: pip install pypdf pymupdf qrcode[pil]
+의존성: pip install pypdf pymupdf qrcode[pil] python-dotenv
+설정:  .env 파일에서 DPI, 품질, URL 조정
 """
 
 import json
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
 from pypdf import PdfReader
 import fitz
 from PIL import Image
 import qrcode
 
-SITE_URL     = 'https://kwaho1993.github.io/2026_KSCLI/'
-IMG_DIR      = Path('book/img')
-RENDER_DPI   = 150   # 높일수록 선명, 파일 크기 증가
-WEBP_QUALITY = 85    # 1-100
+load_dotenv()
 
+SITE_URL          = os.getenv('SITE_URL',          'https://kwaho1993.github.io/2026_KSCLI/')
+AD_RENDER_DPI     = int(os.getenv('AD_RENDER_DPI',     '150'))
+AD_WEBP_QUALITY   = int(os.getenv('AD_WEBP_QUALITY',   '85'))
+PAPER_RENDER_DPI  = int(os.getenv('PAPER_RENDER_DPI',  '150'))
+PAPER_WEBP_QUALITY = int(os.getenv('PAPER_WEBP_QUALITY', '85'))
+
+IMG_DIR   = Path('book/img')
 DIR_ORDER = {'ad': 0, 'papers': 1}
 
 pdf_files = sorted(
     Path('book').rglob('*.pdf'),
     key=lambda p: (DIR_ORDER.get(p.parent.name, 99), p.name),
 )
+
+print(f'설정: 광고 {AD_RENDER_DPI}DPI/q{AD_WEBP_QUALITY}  논문 {PAPER_RENDER_DPI}DPI/q{PAPER_WEBP_QUALITY}')
+print(f'      URL: {SITE_URL}')
+print()
 
 # ── 헬퍼 ─────────────────────────────────────────────────────────────────────
 
@@ -55,23 +67,23 @@ def render_to_webp(pdf_path: Path, out_dir: Path, dpi: int, quality: int) -> lis
 
 metadata = []
 for path in pdf_files:
+    is_ad = path.parent.name == 'ad'
+    dpi     = AD_RENDER_DPI    if is_ad else PAPER_RENDER_DPI
+    quality = AD_WEBP_QUALITY  if is_ad else PAPER_WEBP_QUALITY
+    tag     = 'ad ' if is_ad else 'pdf'
     try:
-        ratios = get_page_ratios(path)
-        img_paths = render_to_webp(path, IMG_DIR, RENDER_DPI, WEBP_QUALITY)
-        pages = [
-            {"ratio": r, "img": p.as_posix()}
-            for r, p in zip(ratios, img_paths)
-        ]
-        total_kb = sum(p.stat().st_size for p in img_paths) // 1024
-        tag = 'ad ' if path.parent.name == 'ad' else 'pdf'
-        print(f"  [{tag}] {path.name}  ({len(ratios)}p)  {total_kb}KB")
+        ratios    = get_page_ratios(path)
+        img_paths = render_to_webp(path, IMG_DIR, dpi, quality)
+        pages     = [{"ratio": r, "img": p.as_posix()} for r, p in zip(ratios, img_paths)]
+        total_kb  = sum(p.stat().st_size for p in img_paths) // 1024
+        print(f'  [{tag}] {path.name}  ({len(ratios)}p)  {total_kb}KB')
         metadata.append({"url": path.as_posix(), "pages": pages})
     except Exception as e:
-        print(f"  FAIL  {path.name}: {e}")
+        print(f'  FAIL  {path.name}: {e}')
 
 out = Path('book/metadata.json')
 out.write_text(json.dumps(metadata, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
-print(f"\n→ {out}  ({out.stat().st_size:,} bytes)")
+print(f'\n→ {out}  ({out.stat().st_size:,} bytes)')
 
 # ── QR 코드 ───────────────────────────────────────────────────────────────────
 
@@ -79,4 +91,4 @@ qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=1
 qr.add_data(SITE_URL)
 qr.make(fit=True)
 qr.make_image(fill_color='black', back_color='white').save('qr.png')
-print(f"→ qr.png  ({Path('qr.png').stat().st_size:,} bytes)  {SITE_URL}")
+print(f'→ qr.png  ({Path("qr.png").stat().st_size:,} bytes)  {SITE_URL}')
