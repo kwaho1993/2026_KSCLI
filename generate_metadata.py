@@ -1,5 +1,5 @@
 """
-광고 PDF → WebP 이미지 변환 + 전체 페이지 종횡비 추출 → book/metadata.json 저장
+모든 PDF → WebP 이미지 변환 → book/metadata.json 저장
 GitHub Pages QR 코드 → qr.png 저장
 
 실행: python generate_metadata.py
@@ -9,14 +9,14 @@ GitHub Pages QR 코드 → qr.png 저장
 import json
 from pathlib import Path
 from pypdf import PdfReader
-import fitz  # pymupdf
+import fitz
 from PIL import Image
 import qrcode
 
-SITE_URL       = 'https://kwaho1993.github.io/2026_KSCLI/'
-AD_IMG_DIR     = Path('book/ad_img')
-AD_RENDER_DPI  = 150   # 높일수록 선명하지만 파일 크기 증가
-AD_WEBP_QUALITY = 85   # 1-100, 낮출수록 파일 크기 감소
+SITE_URL     = 'https://kwaho1993.github.io/2026_KSCLI/'
+IMG_DIR      = Path('book/img')
+RENDER_DPI   = 150   # 높일수록 선명, 파일 크기 증가
+WEBP_QUALITY = 85    # 1-100
 
 DIR_ORDER = {'ad': 0, 'papers': 1}
 
@@ -55,22 +55,16 @@ def render_to_webp(pdf_path: Path, out_dir: Path, dpi: int, quality: int) -> lis
 
 metadata = []
 for path in pdf_files:
-    is_ad = path.parent.name == 'ad'
     try:
         ratios = get_page_ratios(path)
-
-        if is_ad:
-            img_paths = render_to_webp(path, AD_IMG_DIR, AD_RENDER_DPI, AD_WEBP_QUALITY)
-            pages = [
-                {"ratio": r, "img": p.as_posix()}
-                for r, p in zip(ratios, img_paths)
-            ]
-            sizes = ' + '.join(f"{p.stat().st_size // 1024}KB" for p in img_paths)
-            print(f"  [ad]  {path.name}  ({len(ratios)}p)  →  {sizes}")
-        else:
-            pages = [{"ratio": r} for r in ratios]
-            print(f"  [pdf] {path.name}  ({len(ratios)}p)")
-
+        img_paths = render_to_webp(path, IMG_DIR, RENDER_DPI, WEBP_QUALITY)
+        pages = [
+            {"ratio": r, "img": p.as_posix()}
+            for r, p in zip(ratios, img_paths)
+        ]
+        total_kb = sum(p.stat().st_size for p in img_paths) // 1024
+        tag = 'ad ' if path.parent.name == 'ad' else 'pdf'
+        print(f"  [{tag}] {path.name}  ({len(ratios)}p)  {total_kb}KB")
         metadata.append({"url": path.as_posix(), "pages": pages})
     except Exception as e:
         print(f"  FAIL  {path.name}: {e}")

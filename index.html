@@ -57,7 +57,6 @@
             background: #d0d0d0;
             overflow: hidden;
         }
-        .page-wrap canvas,
         .page-wrap img {
             position: absolute;
             top: 0; left: 0;
@@ -174,14 +173,10 @@
     </svg>
 </button>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-
 const RENDER_MARGIN = 800;
 const UNLOAD_MARGIN = 3000;
-const MAX_CONCURRENT = 3;
+const MAX_CONCURRENT = 4;
 
 const viewer       = document.getElementById('viewer');
 const loadingEl    = document.getElementById('loading');
@@ -193,19 +188,10 @@ const tocBackdrop  = document.getElementById('toc-backdrop');
 const tocBtn       = document.getElementById('toc-btn');
 
 const pages        = [];
-const pdfFirstPage = []; // pages[] 인덱스: 각 PDF의 첫 페이지
-const pdfCache     = new Map(); // url → Promise<PDFDocumentProxy>
+const pdfFirstPage = [];
 
 let activeRenders = 0;
 const renderQueue = [];
-
-// PDF 문서를 처음 필요할 때만 로드, 이후 캐시 재사용
-function getPdfDoc(url) {
-    if (!pdfCache.has(url)) {
-        pdfCache.set(url, pdfjsLib.getDocument(url).promise);
-    }
-    return pdfCache.get(url);
-}
 
 function parseName(url) {
     return url.split('/').pop().replace('.pdf', '')
@@ -227,7 +213,7 @@ async function init() {
         return;
     }
 
-    const total = metadata.reduce((s, m) => s + m.ratios.length, 0);
+    const total = metadata.reduce((s, m) => s + m.pages.length, 0);
     let done = 0;
 
     for (const item of metadata) {
@@ -241,12 +227,10 @@ async function init() {
 
             pages.push({
                 wrap,
-                url: item.url,
-                pageNum: pages.length - pdfFirstPage[pdfFirstPage.length - 1] + 1,
+                img: page.img,
                 aspectRatio: page.ratio,
-                img: page.img || null,
                 state: 'idle',
-                canvas: null,
+                el: null,
             });
 
             done++;
@@ -344,33 +328,13 @@ function drain() {
 async function renderPage(p) {
     p.state = 'rendering';
     try {
-        if (p.img) {
-            const el = document.createElement('img');
-            el.decoding = 'async';
-            await new Promise((res, rej) => { el.onload = res; el.onerror = rej; el.src = p.img; });
-            if (p.state !== 'rendering') return;
-            p.wrap.appendChild(el);
-            p.canvas = el;
-            p.state  = 'rendered';
-        } else {
-            const dpr      = window.devicePixelRatio || 1;
-            const cssWidth = viewer.clientWidth;
-            const pdfDoc   = await getPdfDoc(p.url);
-            const page     = await pdfDoc.getPage(p.pageNum);
-            const vp0      = page.getViewport({ scale: 1 });
-            const vp       = page.getViewport({ scale: cssWidth * dpr / vp0.width });
-
-            const canvas = document.createElement('canvas');
-            canvas.width  = Math.round(vp.width);
-            canvas.height = Math.round(vp.height);
-            await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-            page.cleanup();
-
-            if (p.state !== 'rendering') return;
-            p.wrap.appendChild(canvas);
-            p.canvas = canvas;
-            p.state  = 'rendered';
-        }
+        const el = document.createElement('img');
+        el.decoding = 'async';
+        await new Promise((res, rej) => { el.onload = res; el.onerror = rej; el.src = p.img; });
+        if (p.state !== 'rendering') return;
+        p.wrap.appendChild(el);
+        p.el = el;
+        p.state = 'rendered';
     } catch (err) {
         console.error('Render error:', err);
         p.state = 'idle';
@@ -382,7 +346,7 @@ function unload(p) {
         const idx = renderQueue.indexOf(p);
         if (idx !== -1) renderQueue.splice(idx, 1);
     }
-    if (p.canvas) { p.canvas.remove(); p.canvas = null; }
+    if (p.el) { p.el.remove(); p.el = null; }
     p.state = 'idle';
 }
 

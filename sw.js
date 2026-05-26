@@ -14,25 +14,19 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
     const url = new URL(e.request.url);
 
-    // PDF → cache-first (내용 변경 없음)
-    if (url.pathname.endsWith('.pdf')) {
+    // WebP 이미지 → cache-first (변경 없음)
+    if (url.pathname.endsWith('.webp')) {
         e.respondWith(cacheFirst(e.request));
         return;
     }
 
-    // CDN (pdf.js 라이브러리) → cache-first
-    if (url.hostname !== self.location.hostname) {
-        e.respondWith(cacheFirst(e.request));
-        return;
-    }
-
-    // metadata.json → stale-while-revalidate (업데이트 반영 + 즉시 응답)
+    // metadata.json → stale-while-revalidate (즉시 응답 + 백그라운드 갱신)
     if (url.pathname.endsWith('metadata.json')) {
         e.respondWith(staleWhileRevalidate(e.request));
         return;
     }
 
-    // index.html 등 → network-first (항상 최신 유지)
+    // index.html, sw.js 등 → network-first (항상 최신 유지)
     e.respondWith(networkFirst(e.request));
 });
 
