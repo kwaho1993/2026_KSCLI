@@ -9,6 +9,7 @@ GitHub Pages QR 코드 → qr.png 저장
 
 import json
 import os
+import shutil
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -30,6 +31,11 @@ IMG_DIR   = Path('book/img')
 DIR_ORDER   = {'cover': 0, 'ad': 1, 'papers': 2}
 IMAGE_EXTS  = {'.png', '.jpg', '.jpeg'}
 SOURCE_EXTS = {'.pdf'} | IMAGE_EXTS
+
+# book/img는 변환 산출물 전용 폴더이므로 매번 깨끗하게 다시 만든다.
+if IMG_DIR.exists():
+    shutil.rmtree(IMG_DIR)
+IMG_DIR.mkdir(parents=True, exist_ok=True)
 
 # DIR_ORDER에 등록된 디렉터리만 스캔 → 빌드 산출물(img/, journal.pdf 등) 자동 제외
 all_files = sorted(
